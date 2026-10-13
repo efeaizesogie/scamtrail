@@ -25,7 +25,8 @@ export default {
       },
       fontFamily: {
         sans: ['"Neue Haas Grotesk Text"', '"Neue Haas Grotesk Display"', '"Helvetica Neue"', "Helvetica", "Arial", "sans-serif"],
-        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+        // No build-time font download: JetBrains Mono when installed, otherwise the system mono.
+        mono: ["\"JetBrains Mono\"", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },
       fontSize: {
         display: ["80px", { lineHeight: "0.9", letterSpacing: "-0.01em" }],

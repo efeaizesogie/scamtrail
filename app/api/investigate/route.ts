@@ -4,6 +4,8 @@ import type { StreamEvent } from "@/lib/investigate/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** An investigation reads many slow public sources; give it room on serverless hosts. */
+export const maxDuration = 60;
 
 /** Finished event streams, replayed for repeat searches within ten minutes. */
 const cache = ttlCache<StreamEvent[]>(10 * 60 * 1000, 300);
