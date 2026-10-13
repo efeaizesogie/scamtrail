@@ -57,7 +57,7 @@ Sources, and what needs a key:
 | Segment | Source | Key |
 |---|---|---|
 | Social | memory.lol name archive (handle changes) | none |
-| Social | X profile: X API v2, or Sorsa as a cheaper stand-in | `X_BEARER_TOKEN` or `SORSA_API_KEY` |
+| Social | X profile: X API v2, else Scrape Creators, else Sorsa | `X_BEARER_TOKEN`, `SCRAPECREATORS_API_KEY` or `SORSA_API_KEY` |
 | Social | X account details via Sorsa: X's own username-change count and latest change date, account country | `SORSA_API_KEY` |
 | On-chain | Public RPC nodes for Ethereum, Base, BNB Chain, Arbitrum, Polygon | none |
 | On-chain | GoPlus token analysis and address labels | none |

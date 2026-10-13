@@ -41,6 +41,7 @@ export async function POST(req: Request) {
   const env: Env = {
     etherscan: process.env.ETHERSCAN_API_KEY || undefined,
     x: process.env.X_BEARER_TOKEN || undefined,
+    scrapeCreators: process.env.SCRAPECREATORS_API_KEY || undefined,
     sorsa: process.env.SORSA_API_KEY || undefined,
     chainabuse: process.env.CHAINABUSE_API_KEY || undefined,
     coingecko: process.env.COINGECKO_API_KEY || undefined,

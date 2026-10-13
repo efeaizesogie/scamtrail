@@ -120,3 +120,38 @@ export async function sorsaAbout(handle: string, key: string): Promise<XAboutDat
   const real = (d?: string) => (d && !d.startsWith("1970") ? d : null);
   return { changes: r.username_change_count, lastChangeAt: real(r.last_username_change_at), country: r.country || null, premiumSince: real(r.premium_start_at) };
 }
+
+/* ---------- Scrape Creators: X profile ---------- */
+
+/** Profile via Scrape Creators (1 credit per call). Same shape as the X API profile. */
+export async function scrapeCreatorsProfile(handle: string, key: string): Promise<XProfileData | null> {
+  type R = {
+    success?: boolean; message?: string; error?: string; rest_id?: string;
+    is_blue_verified?: boolean; verification?: { verified?: boolean };
+    core?: { created_at?: string; name?: string; screen_name?: string };
+    legacy?: { created_at?: string; name?: string; screen_name?: string; description?: string; followers_count?: number; url?: string;
+      entities?: { url?: { urls?: { expanded_url?: string }[] }; description?: { urls?: { expanded_url?: string }[] } } };
+  };
+  const r = await fetchJson<R>(`https://api.scrapecreators.com/v1/twitter/profile?handle=${encodeURIComponent(handle)}`,
+    { headers: { "x-api-key": key }, timeout: 15000 });
+  if (!r) return null;
+  if (!r.rest_id) {
+    const msg = `${r.message ?? ""} ${r.error ?? ""}`;
+    if (/not found|suspend|does not exist|no user/i.test(msg)) return null;
+    if (/credit/i.test(msg)) throw new SourceError("Out of Scrape Creators credits");
+    throw new SourceError(msg.trim() || "No profile returned");
+  }
+  const l = r.legacy ?? {};
+  const created = new Date(r.core?.created_at ?? l.created_at ?? "");
+  const link = l.entities?.url?.urls?.[0]?.expanded_url ?? l.entities?.description?.urls?.[0]?.expanded_url ?? (l.url ? await expandShortLink(l.url) : null);
+  return {
+    id: r.rest_id,
+    username: r.core?.screen_name ?? l.screen_name ?? handle,
+    name: r.core?.name ?? l.name ?? "",
+    createdAt: Number.isNaN(created.getTime()) ? null : created.toISOString(),
+    description: l.description ?? "",
+    url: link ?? null,
+    followers: l.followers_count ?? null,
+    verified: !!(r.is_blue_verified || r.verification?.verified),
+  };
+}

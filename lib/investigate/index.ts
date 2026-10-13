@@ -5,11 +5,11 @@ import { buildReport, SEGMENT_OF, type Collected } from "./rules";
 import { dexSearch, dexToken, etherscan, goplusAddress, goplusToken, rpcScan } from "./sources/onchain";
 import { blocklists, chainabuse, goplusPhishing } from "./sources/reports";
 import { nameSearch, pairsToCandidates, tokensForHandle } from "./sources/search";
-import { sorsaAbout, sorsaProfile, xHistoryById, xHistoryByName, xProfile } from "./sources/social";
+import { scrapeCreatorsProfile, sorsaAbout, sorsaProfile, xHistoryById, xHistoryByName, xProfile } from "./sources/social";
 import { crtsh, rdap, rootDomain, wayback, website } from "./sources/web";
 import type { Report, SourceId, SourceRun, StreamEvent, SubjectKind } from "./types";
 
-export type Env = { etherscan?: string; x?: string; sorsa?: string; chainabuse?: string; coingecko?: string };
+export type Env = { etherscan?: string; x?: string; scrapeCreators?: string; sorsa?: string; chainabuse?: string; coingecko?: string };
 
 export type Input = { q: string; type?: string | null; chainId?: number | null };
 
@@ -91,9 +91,11 @@ export async function investigate(input: Input, env: Env, emit: (e: StreamEvent)
     c.handle = handle;
     if (env.x) {
       c.xProfile = await step("x-profile", () => xProfile(handle, env.x!), (p) => p ? `@${p.username}` : "", `https://x.com/${handle}`);
+    } else if (env.scrapeCreators) {
+      c.xProfile = await step("x-profile", () => scrapeCreatorsProfile(handle, env.scrapeCreators!), (p) => p ? `@${p.username} via Scrape Creators` : "", `https://x.com/${handle}`);
     } else if (env.sorsa) {
       c.xProfile = await step("x-profile", () => sorsaProfile(handle, env.sorsa!), (p) => p ? `@${p.username} via Sorsa` : "", `https://x.com/${handle}`);
-    } else notRun("x-profile", "Needs an X API key (X_BEARER_TOKEN) or a Sorsa key (SORSA_API_KEY)");
+    } else notRun("x-profile", "Needs an X API, Scrape Creators or Sorsa key");
     if (env.sorsa) {
       c.xAbout = await step("x-about", () => sorsaAbout(handle, env.sorsa!),
         (a) => a ? `${a.changes} username change${a.changes === 1 ? "" : "s"} reported` : "", `https://x.com/${handle}/about`);
