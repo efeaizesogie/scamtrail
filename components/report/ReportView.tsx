@@ -184,15 +184,26 @@ function HandleCard({ h }: { h: NonNullable<Report["handle"]> }) {
   return (
     <Card title="X NAME HISTORY" aside={<p className="t-micro text-text-muted">@{h.handle}{h.account ? <> · ACCOUNT ID <span className="font-mono">{h.account.id}</span></> : null}</p>}>
       <div className="grid gap-8 px-5 py-6 md:grid-cols-[220px_1fr] md:px-8">
-        <div>
-          <p className="t-micro text-text-muted">NAME CHANGES OBSERVED</p>
-          {h.status === "observed"
-            ? <p className="mt-2 text-display-sm leading-none">{h.changes}</p>
-            : <p className="t-heading-sm mt-2">UNKNOWN</p>}
-          <p className="mt-3 text-small text-text-muted">
-            {h.status === "observed" ? `${h.changes ? `At least ${h.changes}.` : "None in the archive."} ${names.length} ${names.length === 1 ? "name" : "names"} seen.` : h.status === "not_run" ? "Not checked." : "Not countable. No history returned."}
-          </p>
-        </div>
+        {h.reported ? (
+          <div>
+            <p className="t-micro flex items-center gap-2 text-text-muted"><GrammarSwatch state="confirmed" width={18} />USERNAME CHANGES · REPORTED BY X</p>
+            <p className="mt-2 text-display-sm leading-none">{h.reported.count}</p>
+            <p className="mt-3 text-small text-text-muted">
+              {h.reported.count === 0 ? "Never changed." : h.reported.lastChangeAt ? `Latest change ${h.reported.lastChangeAt}.` : "Date of latest change not given."}
+              {h.status === "observed" ? ` The archive saw ${names.length} ${names.length === 1 ? "name" : "names"}.` : ""}
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p className="t-micro text-text-muted">NAME CHANGES OBSERVED</p>
+            {h.status === "observed"
+              ? <p className="mt-2 text-display-sm leading-none">{h.changes}</p>
+              : <p className="t-heading-sm mt-2">UNKNOWN</p>}
+            <p className="mt-3 text-small text-text-muted">
+              {h.status === "observed" ? `${h.changes ? `At least ${h.changes}.` : "None in the archive."} ${names.length} ${names.length === 1 ? "name" : "names"} seen.` : h.status === "not_run" ? "Not checked." : "Not countable. No history returned."}
+            </p>
+          </div>
+        )}
         <div>
           {names.length ? (
             <ol className="relative space-y-0">

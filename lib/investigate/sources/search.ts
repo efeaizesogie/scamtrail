@@ -60,9 +60,9 @@ export async function nameSearch(q: string, cgKey?: string): Promise<Candidate[]
   return list.sort((a, b) => (b.liquidityUsd ?? -1) - (a.liquidityUsd ?? -1)).slice(0, 12);
 }
 
-/** Tokens whose listed X account is this handle (DexScreener and CoinGecko). */
-export async function tokensForHandle(handle: string, cgKey?: string): Promise<Candidate[]> {
+/** Tokens whose listed X account is this handle (DexScreener and CoinGecko), found by searching `query`. */
+export async function tokensForHandle(handle: string, cgKey?: string, query = handle): Promise<Candidate[]> {
   const h = handle.toLowerCase();
-  const all = await nameSearch(h, cgKey);
+  const all = await nameSearch(query, cgKey);
   return all.filter((c) => c.twitter === h);
 }

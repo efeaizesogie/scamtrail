@@ -5,16 +5,16 @@ import { buildReport, SEGMENT_OF, type Collected } from "./rules";
 import { dexSearch, dexToken, etherscan, goplusAddress, goplusToken, rpcScan } from "./sources/onchain";
 import { blocklists, chainabuse, goplusPhishing } from "./sources/reports";
 import { nameSearch, pairsToCandidates, tokensForHandle } from "./sources/search";
-import { xHistoryById, xHistoryByName, xProfile } from "./sources/social";
+import { sorsaAbout, sorsaProfile, xHistoryById, xHistoryByName, xProfile } from "./sources/social";
 import { crtsh, rdap, rootDomain, wayback, website } from "./sources/web";
 import type { Report, SourceId, SourceRun, StreamEvent, SubjectKind } from "./types";
 
-export type Env = { etherscan?: string; x?: string; chainabuse?: string; coingecko?: string };
+export type Env = { etherscan?: string; x?: string; sorsa?: string; chainabuse?: string; coingecko?: string };
 
 export type Input = { q: string; type?: string | null; chainId?: number | null };
 
 const LABEL: Record<SourceId, string> = {
-  "x-history": "X name history", "x-profile": "X profile",
+  "x-history": "X name archive", "x-profile": "X profile", "x-about": "X account details",
   rpc: "Chain nodes", etherscan: "Etherscan", "goplus-token": "GoPlus contract analysis", "goplus-address": "GoPlus address labels",
   dexscreener: "DexScreener pools", "name-search": "Name search",
   rdap: "Domain registry (RDAP)", wayback: "Wayback Machine", crtsh: "Certificate log", website: "Website",
@@ -91,14 +91,26 @@ export async function investigate(input: Input, env: Env, emit: (e: StreamEvent)
     c.handle = handle;
     if (env.x) {
       c.xProfile = await step("x-profile", () => xProfile(handle, env.x!), (p) => p ? `@${p.username}` : "", `https://x.com/${handle}`);
-    } else notRun("x-profile", "Needs an X API key (X_BEARER_TOKEN)");
+    } else if (env.sorsa) {
+      c.xProfile = await step("x-profile", () => sorsaProfile(handle, env.sorsa!), (p) => p ? `@${p.username} via Sorsa` : "", `https://x.com/${handle}`);
+    } else notRun("x-profile", "Needs an X API key (X_BEARER_TOKEN) or a Sorsa key (SORSA_API_KEY)");
+    if (env.sorsa) {
+      c.xAbout = await step("x-about", () => sorsaAbout(handle, env.sorsa!),
+        (a) => a ? `${a.changes} username change${a.changes === 1 ? "" : "s"} reported` : "", `https://x.com/${handle}/about`);
+    } else notRun("x-about", "Needs a Sorsa API key (SORSA_API_KEY)");
     const [hist, tokens] = await Promise.all([
       step("x-history", async () => {
         const r = await xHistoryByName(handle);
         if (c.xProfile?.id) c.xById = await xHistoryById(c.xProfile.id).catch(() => null);
         return r ?? (c.xById ? { accounts: [c.xById] } : null);
       }, (h) => h ? `${h.accounts.length === 1 ? "1 account" : `${h.accounts.length} accounts`} found` : ""),
-      c.subject.kind === "HANDLE" ? step("name-search", () => tokensForHandle(handle, env.coingecko), (t) => `${t.length} listed token${t.length === 1 ? "" : "s"}`) : Promise.resolve(undefined),
+      c.subject.kind === "HANDLE" ? step("name-search", async () => {
+        // Token listings name their X account; search by handle, then by the profile's display name.
+        const byHandle = await tokensForHandle(handle, env.coingecko);
+        const display = c.xProfile?.name?.trim();
+        if (byHandle.length || !display || display.toLowerCase() === handle) return byHandle;
+        return tokensForHandle(handle, env.coingecko, display);
+      }, (t) => `${t.length} listed token${t.length === 1 ? "" : "s"}`) : Promise.resolve(undefined),
     ]);
     c.xHistory = hist;
     if (tokens) c.handleTokens = tokens;
@@ -208,7 +220,7 @@ export async function investigate(input: Input, env: Env, emit: (e: StreamEvent)
 
   /* Anything still queued had nothing to check. */
   const why: Partial<Record<SourceId, string>> = {
-    "x-history": "No X account was found to check", "x-profile": "No X account was found to check",
+    "x-history": "No X account was found to check", "x-profile": "No X account was found to check", "x-about": "No X account was found to check",
     rdap: "No website was found to check", wayback: "No website was found to check", crtsh: "No website was found to check", website: "No website was found to check",
     "goplus-phishing": "No website was found to check",
     rpc: "No address was found to check", dexscreener: "No token contract to check", "goplus-token": "No token contract to check",

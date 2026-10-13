@@ -5,7 +5,7 @@ export type Segment = "SOCIAL" | "ON-CHAIN" | "WEBSITE" | "REPORTS";
 export type SubjectKind = "HANDLE" | "WALLET" | "CONTRACT" | "DOMAIN" | "PROJECT";
 
 export type SourceId =
-  | "x-history" | "x-profile"
+  | "x-history" | "x-profile" | "x-about"
   | "rpc" | "etherscan" | "goplus-token" | "goplus-address" | "dexscreener" | "name-search"
   | "rdap" | "wayback" | "crtsh" | "website"
   | "blocklists" | "goplus-phishing" | "chainabuse";
@@ -55,6 +55,8 @@ export type HandleHistory = {
   changes: number;
   archiveUntil: string | null;
   note: string;
+  /** X's own count of username changes, from the account's About metadata, when available. */
+  reported?: { count: number; lastChangeAt: string | null };
 };
 
 export type Fact = { label: string; value: string; href?: string; klass: Klass };

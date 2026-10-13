@@ -199,3 +199,24 @@ test("generated report copy follows the house copy rules", () => {
   assert.ok(r.findings.some((f) => f.klass === "misattributed"));
   assert.ok(!r.findings.some((f) => f.id === "reports-none"), "no 'nothing found' line when lists matched");
 });
+
+test("X's reported username count is CONFIRMED, leads the summary, and the archive stops repeating it", () => {
+  const c = base({
+    xHistory: RENAMED,
+    xAbout: { changes: 4, lastChangeAt: "2026-09-01T10:00:00Z", country: "Canada", premiumSince: null },
+    runs: [run("x-history", "SOCIAL", "done"), run("x-about", "SOCIAL", "done")],
+  });
+  const r = buildReport(c, "ST", "2026-10-13T00:00:00Z");
+  const f = r.findings.find((x) => x.id === "x-reported")!;
+  assert.equal(f.klass, "confirmed");
+  assert.match(f.text, /changed its username 4 times, most recently on 2026-09-01 \(42 days ago\)/);
+  assert.equal(r.handle!.reported!.count, 4);
+  assert.match(r.summary[0], /4 times, most recently 42 days ago/);
+  assert.ok(!r.summary.some((s) => /at least/.test(s)), "archive minimum is not repeated in the summary");
+  assert.ok(r.findings.some((x) => x.id === "x-country" && x.klass === "credible"));
+  assert.ok(r.trail.some((e) => e.kind === "HANDLE" && e.date === "2026-09-01" && e.klass === "confirmed"));
+
+  const never = buildReport(base({ xHistory: null, xAbout: { changes: 0, lastChangeAt: null, country: null, premiumSince: null } }), "ST", "2026-10-13T00:00:00Z");
+  assert.match(never.findings.find((x) => x.id === "x-reported")!.text, /never changed its username/);
+  assert.ok(!never.summary.some((s) => /could not be counted/.test(s)));
+});

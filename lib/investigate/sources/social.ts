@@ -24,7 +24,8 @@ export async function xHistoryByName(handle: string): Promise<XHistoryData | nul
 
 export async function xHistoryById(id: string): Promise<HandleAccount | null> {
   const r = await fetchJson<MemoryLol>(`https://api.memory.lol/v1/tw/id/${encodeURIComponent(id)}`);
-  return r?.screen_names ? toAccount(r) : null;
+  const acc = r?.screen_names ? toAccount(r) : null;
+  return acc?.names.length ? acc : null;
 }
 
 /** X API v2 profile. Needs X_BEARER_TOKEN. */
@@ -62,4 +63,60 @@ export async function xProfile(handle: string, token: string): Promise<XProfileD
     id: d.id, username: d.username, name: d.name, createdAt: d.created_at ?? null,
     description: d.description ?? "", url: expanded, followers: d.public_metrics?.followers_count ?? null, verified: !!d.verified,
   };
+}
+
+/* ---------- Sorsa (X data API): profile and X's own "About this account" metadata ---------- */
+
+const SORSA = "https://api.sorsa.io/v3";
+const sorsaHeaders = (key: string) => ({ ApiKey: key });
+
+/** Bio links arrive as t.co short links; read the redirect target without following it. */
+async function expandShortLink(u: string): Promise<string> {
+  if (!/^https?:\/\/t\.co\//i.test(u)) return u;
+  try {
+    const res = await fetch(u, { redirect: "manual", signal: AbortSignal.timeout(5000), cache: "no-store" });
+    return res.headers.get("location") ?? u;
+  } catch {
+    return u;
+  }
+}
+
+export async function sorsaProfile(handle: string, key: string): Promise<XProfileData | null> {
+  type R = { id?: string; username?: string; display_name?: string; description?: string; created_at?: string;
+    followers_count?: number; verified?: boolean; bio_urls?: string[] | null; message?: string; error?: string };
+  const r = await fetchJson<R>(`${SORSA}/info?username=${encodeURIComponent(handle)}`, { headers: sorsaHeaders(key) });
+  if (!r) return null;
+  if (!r.id) {
+    if (/not found|suspend|does not exist/i.test(`${r.message ?? ""} ${r.error ?? ""}`)) return null;
+    throw new SourceError(r.message ?? r.error ?? "No profile returned");
+  }
+  const raw = r.bio_urls?.[0] ?? r.description?.match(/https?:\/\/\S+/)?.[0] ?? null;
+  const created = r.created_at ? new Date(r.created_at) : null;
+  return {
+    id: r.id, username: r.username ?? handle, name: r.display_name ?? "",
+    createdAt: created && !Number.isNaN(created.getTime()) ? created.toISOString() : null,
+    description: r.description ?? "", url: raw ? await expandShortLink(raw) : null,
+    followers: r.followers_count ?? null, verified: !!r.verified,
+  };
+}
+
+/** X's account metadata: username change count and date, country, Premium start. */
+export type XAboutData = {
+  changes: number;
+  lastChangeAt: string | null;
+  country: string | null;
+  premiumSince: string | null;
+};
+
+export async function sorsaAbout(handle: string, key: string): Promise<XAboutData | null> {
+  type R = { username_change_count?: number; last_username_change_at?: string; country?: string; premium_start_at?: string; message?: string; error?: string };
+  const r = await fetchJson<R>(`${SORSA}/about?username=${encodeURIComponent(handle)}`, { headers: sorsaHeaders(key) });
+  if (!r) return null;
+  if (typeof r.username_change_count !== "number") {
+    if (/not found|suspend|does not exist/i.test(`${r.message ?? ""} ${r.error ?? ""}`)) return null;
+    throw new SourceError(r.message ?? r.error ?? "No account metadata returned");
+  }
+  // The epoch date means "never changed".
+  const real = (d?: string) => (d && !d.startsWith("1970") ? d : null);
+  return { changes: r.username_change_count, lastChangeAt: real(r.last_username_change_at), country: r.country || null, premiumSince: real(r.premium_start_at) };
 }

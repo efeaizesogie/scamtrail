@@ -35,8 +35,15 @@ export async function wayback(domain: string): Promise<WaybackData | null> {
   const avail = await fetchJson<{ archived_snapshots?: { closest?: { timestamp?: string } } }>(
     `https://archive.org/wayback/available?url=${encodeURIComponent(domain)}&timestamp=19960101`, { timeout: 12000 },
   );
-  const ts = avail?.archived_snapshots?.closest?.timestamp;
-  if (!ts) return null;
+  let ts = avail?.archived_snapshots?.closest?.timestamp;
+  if (!ts) {
+    // The availability API sometimes answers empty under load. Only CDX can confirm "never archived".
+    const first = await fetchJson<string[][]>(
+      `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(domain)}&output=json&fl=timestamp&limit=1`, { timeout: 15000 },
+    ).catch(() => { throw new SourceError("Archive index did not respond"); });
+    ts = first?.[1]?.[0];
+    if (!ts) return null;
+  }
   const LIMIT = 400;
   const months = await fetchJson<string[][]>(
     `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(domain)}&output=json&fl=timestamp&collapse=timestamp:6&limit=${LIMIT}`, { timeout: 9000 },

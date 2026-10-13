@@ -57,7 +57,8 @@ Sources, and what needs a key:
 | Segment | Source | Key |
 |---|---|---|
 | Social | memory.lol name archive (handle changes) | none |
-| Social | X API v2 profile | `X_BEARER_TOKEN` |
+| Social | X profile: X API v2, or Sorsa as a cheaper stand-in | `X_BEARER_TOKEN` or `SORSA_API_KEY` |
+| Social | X account details via Sorsa: X's own username-change count and latest change date, account country | `SORSA_API_KEY` |
 | On-chain | Public RPC nodes for Ethereum, Base, BNB Chain, Arbitrum, Polygon | none |
 | On-chain | GoPlus token analysis and address labels | none |
 | On-chain | DexScreener pools; CoinGecko for name search | none (`COINGECKO_API_KEY` optional) |
@@ -68,7 +69,7 @@ Sources, and what needs a key:
 
 Evidence classes: CONFIRMED is read straight from a chain or registry; CREDIBLE comes from a named third party (GoPlus, blocklists, the name archive, DexScreener); COMPLAINT is user reports; UNVERIFIED is what a project says about itself; UNKNOWN is a source that failed, did not run or returned nothing; MISATTRIBUTED is a different token with the same name.
 
-Handle changes come from the memory.lol archive. It only knows names it has captured, so counts are shown as minimums, and many crypto accounts are not in it at all. With an X key the lookup is by account ID, which is exact for the accounts the archive does hold.
+With a Sorsa key, the headline handle-change count comes from X itself (the account's About metadata) and is shown as CONFIRMED; the archive then supplies the earlier names it has seen. Without it, handle changes come from the memory.lol archive. It only knows names it has captured, so counts are shown as minimums, and many crypto accounts are not in it at all. With an X key the lookup is by account ID, which is exact for the accounts the archive does hold.
 
 ## Notes
 

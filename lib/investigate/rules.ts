@@ -4,7 +4,7 @@
  */
 import { chainById, explorerAddress, explorerBlock, explorerTx } from "./chains";
 import type { RpcData, GoPlusToken, GoPlusAddress, DexPair, EtherscanData } from "./sources/onchain";
-import type { XHistoryData, XProfileData } from "./sources/social";
+import type { XAboutData, XHistoryData, XProfileData } from "./sources/social";
 import type { RdapData, WaybackData, CrtData, SiteData } from "./sources/web";
 import type { BlocklistData, ChainabuseData } from "./sources/reports";
 import { rootDomain } from "./sources/web";
@@ -22,6 +22,7 @@ export type Collected = {
   xHistory?: XHistoryData | null;
   xById?: HandleAccount | null;
   xProfile?: XProfileData | null;
+  xAbout?: XAboutData | null;
   handleTokens?: Candidate[];
 
   domain?: string;
@@ -53,7 +54,7 @@ export type Collected = {
 const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : null);
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 export const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
-const pct = (v: number) => `${v === 0 ? 0 : v >= 10 ? Math.round(v) : v.toFixed(1)}%`;
+const pct = (v: number) => `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10}%`;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export function usd(v: number | null | undefined) {
   if (v == null) return "Unknown";
@@ -72,13 +73,15 @@ export function handleHistory(c: Collected): HandleHistory | undefined {
   if (!c.handle) return undefined;
   const h = c.handle.toLowerCase();
   const run = c.runs.find((r) => r.id === "x-history");
-  const accounts = [...(c.xHistory?.accounts ?? [])];
-  if (c.xById && !accounts.some((a) => a.id === c.xById!.id)) accounts.push(c.xById);
+  const accounts = (c.xHistory?.accounts ?? []).filter((a) => a.names.length);
+  if (c.xById?.names.length && !accounts.some((a) => a.id === c.xById!.id)) accounts.push(c.xById);
+  const reported = c.xAbout ? { count: c.xAbout.changes, lastChangeAt: day(c.xAbout.lastChangeAt) } : undefined;
   if (!accounts.length) {
     const status = run?.status === "not_run" ? "not_run" : "unavailable";
     return {
-      handle: h, status, others: [], changes: 0, archiveUntil: null,
-      note: run?.status === "failed" ? `The name archive could not be reached (${run.note}). Name changes were not counted.`
+      handle: h, status, others: [], changes: 0, archiveUntil: null, reported,
+      note: run?.status === "failed" ? `The name archive could not be reached (${run.note}).${reported ? "" : " Name changes were not counted."}`
+        : reported ? "The public name archive has no record of earlier names for this handle."
         : "No archived name history for this handle. Name changes could not be counted.",
     };
   }
@@ -89,8 +92,10 @@ export function handleHistory(c: Collected): HandleHistory | undefined {
   const archiveUntil = main.names.map((n) => n.lastSeen ?? "").sort().at(-1) || null;
   const first = main.names[0]?.firstSeen ?? null;
   return {
-    handle: h, status: "observed", account: main, others, changes: Math.max(0, main.names.length - 1), archiveUntil,
-    note: `Names observed in a public archive between ${first ?? "an unknown date"} and ${archiveUntil ?? "an unknown date"}. Changes outside that window are not counted.`,
+    handle: h, status: "observed", account: main, others, changes: Math.max(0, main.names.length - 1), archiveUntil, reported,
+    note: first || archiveUntil
+      ? `Names observed in a public archive between ${first ?? "an unknown date"} and ${archiveUntil ?? "an unknown date"}. Changes outside that window are not counted.`
+      : "Names held in a public archive, without capture dates.",
   };
 }
 
@@ -104,8 +109,27 @@ export function buildFindings(c: Collected, hh?: HandleHistory): Finding[] {
 
   /* Social */
   if (hh && c.handle) {
-    const h = `@${hh.account?.names.find((n) => n.name.toLowerCase() === hh.handle)?.name ?? hh.handle}`;
+    const h = `@${c.xProfile?.username ?? hh.account?.names.find((n) => n.name.toLowerCase() === hh.handle)?.name ?? hh.handle}`;
     const memUrl = `https://api.memory.lol/v1/tw/${hh.handle}`;
+    const rep = hh.reported;
+    if (rep) {
+      // X's own account metadata: the authoritative change count.
+      const ago = rep.lastChangeAt ? daysBetween(rep.lastChangeAt, at) : null;
+      const recent = ago != null && ago <= 90;
+      add({ id: "x-reported", klass: "confirmed", topic: "SOCIAL", weight: rep.count === 0 ? 48 : recent ? 90 : 84,
+        source: "X account details (via Sorsa)", sourceUrl: `https://x.com/${hh.handle}/about`, eventAt: rep.lastChangeAt,
+        text: rep.count === 0
+          ? `X reports that ${h} has never changed its username.`
+          : `X reports that ${h} has changed its username ${rep.count === 1 ? "once" : `${rep.count} times`}${rep.lastChangeAt ? `, most recently on ${rep.lastChangeAt}${ago != null ? ` (${plural(ago, "day")} ago)` : ""}` : ""}.`,
+        limits: "X reports the count and the latest date. The earlier names themselves come from the public archive below, where it has them.",
+        summary: rep.count === 0 ? `${h} has never changed its username, according to X.`
+          : `${h} has changed its username ${rep.count === 1 ? "once" : `${rep.count} times`}${recent ? `, most recently ${plural(ago!, "day")} ago` : rep.lastChangeAt ? `, last on ${rep.lastChangeAt}` : ""}.` });
+    }
+    if (c.xAbout?.country) {
+      add({ id: "x-country", klass: "credible", topic: "SOCIAL", weight: 30, source: "X account details (via Sorsa)", sourceUrl: `https://x.com/${hh.handle}/about`, eventAt: null,
+        text: `X lists the account as based in ${c.xAbout.country}.`,
+        limits: "X's own estimate from account signals. VPNs and travel can affect it." });
+    }
     if (hh.status === "observed" && hh.account) {
       const names = hh.account.names;
       const first = names[0]?.firstSeen ?? null;
@@ -113,19 +137,21 @@ export function buildFindings(c: Collected, hh?: HandleHistory): Finding[] {
         add({ id: "x-changes", klass: "credible", topic: "SOCIAL", weight: 82, source: MEMORY, sourceUrl: memUrl, eventAt: first,
           text: `The account behind ${h} has used at least ${plural(names.length, "name")}: ${names.map((n) => `@${n.name}`).join(", ")}. That is at least ${plural(hh.changes, "name change")} between ${first ?? "an unknown date"} and ${hh.archiveUntil ?? "an unknown date"}.`,
           limits: "The archive captures names when it sees them. Changes it never saw are not counted, so this is a minimum.",
-          summary: `${h} has changed its name at least ${hh.changes === 1 ? "once" : `${hh.changes} times`} (${plural(names.length, "name")} observed since ${first?.slice(0, 4) ?? "an unknown year"}).` });
+          summary: rep ? undefined : `${h} has changed its name at least ${hh.changes === 1 ? "once" : `${hh.changes} times`} (${plural(names.length, "name")} observed since ${first?.slice(0, 4) ?? "an unknown year"}).` });
         const cur = names.find((n) => n.name.toLowerCase() === hh.handle);
         const idx = cur ? names.indexOf(cur) : -1;
         if (cur?.firstSeen && idx > 0 && hh.archiveUntil && daysBetween(cur.firstSeen, hh.archiveUntil) <= 180) {
           add({ id: "x-recent", klass: "credible", topic: "SOCIAL", weight: 72, source: MEMORY, sourceUrl: memUrl, eventAt: cur.firstSeen,
             text: `The name ${h} first appears on ${cur.firstSeen}. Before that the account used @${names[idx - 1].name}.`,
-            summary: `The current name was adopted recently, on ${cur.firstSeen}.` });
+            summary: rep ? undefined : `The current name was adopted recently, on ${cur.firstSeen}.` });
         }
       } else {
         add({ id: "x-changes", klass: "credible", topic: "SOCIAL", weight: 45, source: MEMORY, sourceUrl: memUrl, eventAt: first,
-          text: `Only one name, ${h}, is recorded for this account between ${first ?? "an unknown date"} and ${hh.archiveUntil ?? "an unknown date"}.`,
+          text: first || hh.archiveUntil
+            ? `Only one name, ${h}, is recorded for this account between ${first ?? "an unknown date"} and ${hh.archiveUntil ?? "an unknown date"}.`
+            : `The archive holds this account under one name, ${h}, without capture dates.`,
           limits: "The archive is partial. A change it did not capture would not show here.",
-          summary: `No name changes were observed for ${h} in the archive.` });
+          summary: rep ? undefined : `No name changes were observed for ${h} in the archive.` });
       }
       if (hh.others.length) {
         add({ id: "x-shared", klass: "credible", topic: "SOCIAL", weight: 66, source: MEMORY, sourceUrl: memUrl, eventAt: null,
@@ -133,13 +159,13 @@ export function buildFindings(c: Collected, hh?: HandleHistory): Finding[] {
           summary: `The name ${h} has been held by more than one account.` });
       }
     } else if (hh.status !== "not_run") {
-      add({ id: "x-changes", klass: "unknown", topic: "SOCIAL", weight: 50, source: MEMORY, sourceUrl: memUrl, eventAt: null, text: hh.note,
-        summary: `No name history was found for ${h}, so name changes could not be counted.` });
+      add({ id: "x-changes", klass: "unknown", topic: "SOCIAL", weight: rep ? 20 : 50, source: MEMORY, sourceUrl: memUrl, eventAt: null, text: hh.note,
+        summary: rep ? undefined : `No name history was found for ${h}, so name changes could not be counted.` });
     }
   }
   if (c.xProfile) {
     const p = c.xProfile;
-    if (p.createdAt) add({ id: "x-created", klass: "confirmed", topic: "SOCIAL", weight: 40, source: "X API", sourceUrl: `https://x.com/${p.username}`, eventAt: day(p.createdAt),
+    if (p.createdAt) add({ id: "x-created", klass: "confirmed", topic: "SOCIAL", weight: 40, source: "X profile", sourceUrl: `https://x.com/${p.username}`, eventAt: day(p.createdAt),
       text: `The X account @${p.username} was created on ${day(p.createdAt)}${p.followers != null ? ` and has ${p.followers.toLocaleString("en-US")} followers` : ""}.` });
   }
 
@@ -441,6 +467,7 @@ export function domainFacts(c: Collected): Fact[] {
 export function buildTrail(c: Collected, hh?: HandleHistory): TrailEvent[] {
   const ev: TrailEvent[] = [];
   for (const n of hh?.account?.names ?? []) if (n.firstSeen) ev.push({ date: n.firstSeen, kind: "HANDLE", value: `@${n.name}`, klass: "credible" });
+  if (hh?.reported?.lastChangeAt) ev.push({ date: hh.reported.lastChangeAt, kind: "HANDLE", value: `@${c.xProfile?.username ?? hh.handle}`, klass: "confirmed", href: `https://x.com/${hh.handle}/about` });
   if (c.domain && c.rdap?.registered) ev.push({ date: day(c.rdap.registered)!, kind: "DOMAIN", value: c.domain, klass: "confirmed", href: c.rdap.url });
   if (c.domain && c.wayback?.first) ev.push({ date: c.wayback.first, kind: "DOMAIN", value: `${c.domain} first archived`, klass: "credible" });
   const cid = c.chainId ?? 1;
@@ -455,7 +482,7 @@ export function buildTrail(c: Collected, hh?: HandleHistory): TrailEvent[] {
 /* ---------- coverage, limits, summary ---------- */
 
 export const SEGMENT_OF: Record<SourceId, Segment> = {
-  "x-history": "SOCIAL", "x-profile": "SOCIAL",
+  "x-history": "SOCIAL", "x-profile": "SOCIAL", "x-about": "SOCIAL",
   rpc: "ON-CHAIN", etherscan: "ON-CHAIN", "goplus-token": "ON-CHAIN", "goplus-address": "ON-CHAIN", dexscreener: "ON-CHAIN", "name-search": "ON-CHAIN",
   rdap: "WEBSITE", wayback: "WEBSITE", crtsh: "WEBSITE", website: "WEBSITE",
   blocklists: "REPORTS", "goplus-phishing": "REPORTS", chainabuse: "REPORTS",
