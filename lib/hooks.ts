@@ -1,6 +1,7 @@
 "use client";
 import { RefObject, useEffect, useState } from "react";
 import { gsap } from "./gsap";
+import { flight } from "./flight";
 
 export function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -68,10 +69,13 @@ export function useScrollProgress<T extends HTMLElement>(ref: RefObject<T | null
     const el = ref.current;
     if (!enabled || !el) return;
     const proxy = { v: 0 };
+    // During a nav glide the scene is only passed through: skip the per-frame renders
+    // and catch up once it lands.
+    const off = flight.onLand(() => setP(proxy.v));
     const tween = gsap.to(proxy, {
       v: 1,
       ease: "none",
-      onUpdate: () => setP(proxy.v),
+      onUpdate: () => { if (!flight.active) setP(proxy.v); },
       scrollTrigger: {
         trigger: el,
         start: mode === "pin" ? "top top" : "top bottom",
@@ -81,6 +85,7 @@ export function useScrollProgress<T extends HTMLElement>(ref: RefObject<T | null
       },
     });
     return () => {
+      off();
       tween.scrollTrigger?.kill();
       tween.kill();
     };

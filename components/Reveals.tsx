@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, type ReactNode } from "react";
 import { EASE_OUT, gsap, ScrollTrigger } from "@/lib/gsap";
+import { flight } from "@/lib/flight";
 
 /**
  * Page-wide GSAP entrances, driven by ScrollTrigger:
@@ -54,7 +55,7 @@ export function Reveals() {
             scrollTrigger: { trigger: el.closest("svg") ?? el, start: "top 88%", end: "center 45%", scrub: 0.8 },
           });
         }
-        if (added) ScrollTrigger.refresh();
+        if (added && !flight.active) ScrollTrigger.refresh();
       };
 
       setup();
@@ -75,15 +76,23 @@ export function Reveals() {
 
     // Pinned scenes change the page height after hydration; keep trigger positions true.
     let t = 0;
+    // A refresh mid-glide would move targets under the nav scroll; wait for it to land.
+    let off = () => {};
+    const refresh = () => {
+      off();
+      if (!flight.active) return ScrollTrigger.refresh();
+      off = flight.onLand(() => { off(); off = () => {}; ScrollTrigger.refresh(); });
+    };
     const ro = new ResizeObserver(() => {
       clearTimeout(t);
-      t = window.setTimeout(() => ScrollTrigger.refresh(), 160);
+      t = window.setTimeout(refresh, 160);
     });
     ro.observe(document.body);
 
     return () => {
       ro.disconnect();
       clearTimeout(t);
+      off();
       mm.revert();
     };
   }, []);

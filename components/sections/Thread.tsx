@@ -23,7 +23,10 @@ const HUB = { x: 0.42, y: 0.42 };
 // Centred on the four sources (x 0.2 to 0.684) so tall or narrow screens still show them all.
 const OVERVIEW: Shot = { x: 0.44, y: 0.4, s: 1 };
 const SHOTS = [...BEATS.map((b) => b.shot), OVERVIEW];
-const MAX_ZOOM = Math.max(...SHOTS.map((sh) => sh.s));
+/** Each beat breathes in slightly while it is on screen, so every scroll moves the picture. */
+const BREATHE = 0.035;
+// Lay out for the deepest zoom plus the breath, so the photo stays sharp.
+const MAX_ZOOM = Math.max(...SHOTS.map((sh) => sh.s)) * (1 + BREATHE);
 const CLOSING = { n: "05", key: "TOGETHER", text: "Four sources on one map, with the gaps marked." };
 
 /** Joins the four sources to the hub, in the photo's coordinate space. */
@@ -66,11 +69,16 @@ const FRAME = { top: 76, side: 40, bottom: 20, radius: 28 };
 export function Thread() {
   const ref = useRef<HTMLElement>(null);
   const scenes = useScrollScenes();
-  const p = useScrollProgress(ref, "pin", scenes, 1);
+  // A short scrub: Lenis already eases the wheel, so a long one reads as lag.
+  const p = useScrollProgress(ref, "pin", scenes, 0.45);
 
   // Timeline: four beats and the pull-back (0.02 to 0.72), the frame opens to
   // full bleed (0.68 to 0.86), the links draw in (0.8 to 0.95), then a short hold.
-  const { shot, stop } = scenes ? shotAt(SHOTS, span(p, 0.02, 0.72), 0.38, 0.55) : { shot: OVERVIEW, stop: 4 };
+  // Holds are short (16% of each beat) so the camera is nearly always travelling.
+  const tour = scenes ? span(p, 0.02, 0.72) : 1;
+  const { shot: base, stop } = scenes ? shotAt(SHOTS, tour, 0.16, 0.55) : { shot: OVERVIEW, stop: 4 };
+  const beat = (tour * (SHOTS.length - 1)) % 1;
+  const shot = scenes && tour < 1 ? { ...base, s: base.s * (1 + BREATHE * Math.sin(Math.PI * beat)) } : base;
   const overview = stop === 4;
   const e = scenes ? span(p, 0.68, 0.86) : 1;
   const open = e * e * (3 - 2 * e);
@@ -124,7 +132,7 @@ export function Thread() {
   const inset = { top: m(FRAME.top), side: m(FRAME.side), bottom: m(FRAME.bottom), radius: m(FRAME.radius) };
 
   return (
-    <section id="thread" ref={ref} aria-labelledby="thread-title" className="relative h-[480vh]">
+    <section id="thread" ref={ref} aria-labelledby="thread-title" className="relative h-[380vh]">
       <div className="sticky top-0 h-screen overflow-hidden">
         {/* The photo always covers the viewport; the clip is what grows to full bleed. */}
         <div className="absolute inset-0"
